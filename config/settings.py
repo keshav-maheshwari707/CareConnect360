@@ -186,17 +186,30 @@ LOGOUT_REDIRECT_URL = 'login'
 
 AUTH_USER_MODEL = 'accounts.User'
 
+
 # CORS and CSRF configuration
-# Reads comma-separated origins from environment with local fallback
+
 cors_origins_env = os.getenv(
     'CORS_ALLOWED_ORIGINS',
     'http://localhost:5173,http://127.0.0.1:5173'
 )
+
 CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in cors_origins_env.split(',') if origin.strip()
+    origin.strip().rstrip('/')
+    for origin in cors_origins_env.split(',')
+    if origin.strip()
 ]
 
 csrf_origins_env = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip().rstrip('/')
+    for origin in csrf_origins_env.split(',')
+    if origin.strip()
+]
+
+csrf_origins_env = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+
 if csrf_origins_env:
     CSRF_TRUSTED_ORIGINS = [
         origin.strip() for origin in csrf_origins_env.split(',') if origin.strip()
