@@ -8,6 +8,9 @@ __pycache__/
 # Django and databases
 *.sqlite3
 *.db
+backups/
+*.sql
+*.sql.gz
 
 # Environment and secrets
 .env
@@ -27,5 +30,6 @@ build/
 .DS_Store
 Thumbs.db
 
-# User uploads
+# User uploads & static files
 media/
+staticfiles/

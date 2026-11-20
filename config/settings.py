@@ -11,11 +11,11 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-import os
-from dotenv import load_dotenv
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -23,12 +23,17 @@ load_dotenv(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-t6@ujwb^r!jik2p0ze@9he3t!q(5eu4gmdz0fda)&79o=-k4_c'
+SECRET_KEY = os.getenv(
+    'SECRET_KEY',
+    'django-insecure-t6@ujwb^r!jik2p0ze@9he3t!q(5eu4gmdz0fda)&79o=-k4_c'
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = []
+# Host configuration: accepts comma-separated hosts from env, defaults to localhost
+allowed_hosts_env = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost')
+ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.strip()]
 
 
 # Application definition
@@ -51,6 +56,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -83,14 +89,13 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': os.getenv('DB_NAME'),
         'USER': os.getenv('DB_USER'),
         'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'HOST': os.getenv('DB_HOST', '127.0.0.1'),
         'PORT': os.getenv('DB_PORT', '3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',
@@ -98,6 +103,12 @@ DATABASES = {
     }
 }
 
+# Optional SSL support for hosted/cloud MySQL providers
+if os.getenv('DB_SSL_MODE', '').lower() in ('required', 'true', '1'):
+    DATABASES['default']['OPTIONS']['ssl_mode'] = 'REQUIRED'
+    ssl_ca = os.getenv('DB_SSL_CA')
+    if ssl_ca:
+        DATABASES['default']['OPTIONS']['ssl'] = {'ca': ssl_ca}
 
 
 # Password validation
@@ -141,6 +152,20 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+
+# Media files
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 
 # Email
@@ -148,7 +173,10 @@ STATIC_URL = 'static/'
 
 MAILERS = {
     'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        'BACKEND': os.getenv(
+            'EMAIL_BACKEND',
+            'django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend'
+        ),
     },
 }
 
@@ -158,9 +186,21 @@ LOGOUT_REDIRECT_URL = 'login'
 
 AUTH_USER_MODEL = 'accounts.User'
 
+# CORS and CSRF configuration
+# Reads comma-separated origins from environment with local fallback
+cors_origins_env = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173'
+)
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
+    origin.strip() for origin in cors_origins_env.split(',') if origin.strip()
 ]
+
+csrf_origins_env = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if csrf_origins_env:
+    CSRF_TRUSTED_ORIGINS = [
+        origin.strip() for origin in csrf_origins_env.split(',') if origin.strip()
+    ]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -170,3 +210,35 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
 }
+
+# ---------------------------------------------------------------------------
+# Production security settings
+# ---------------------------------------------------------------------------
+# All settings below are OFF when DEBUG=True (local development).
+# In production (DEBUG=False) they default to secure values.
+# Override any of them via environment variables on Render.
+
+# Redirect all HTTP requests to HTTPS in production.
+# Set SECURE_SSL_REDIRECT=False in env if terminating TLS at a load balancer
+# that already handles redirects (rare on Render; leave True by default).
+SECURE_SSL_REDIRECT = (not DEBUG) and os.getenv('SECURE_SSL_REDIRECT', 'True').lower() in ('true', '1', 'yes')
+
+# Trust the X-Forwarded-Proto header sent by Render's reverse proxy.
+# Must be set so Django recognises requests as HTTPS behind the proxy.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if not DEBUG else None
+
+# Mark session and CSRF cookies as Secure (HTTPS-only) in production.
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
+# HSTS – disabled by default (SECURE_HSTS_SECONDS=0).
+# Set SECURE_HSTS_SECONDS=31536000 in the Render env ONLY after you have
+# confirmed that HTTPS is fully working and you intend to stay HTTPS-only.
+# WARNING: Once browsers cache a non-zero HSTS value, switching back to HTTP
+# for that domain will break access for affected users.
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '0')) if not DEBUG else 0
+
+# Sub-domain and preload flags – both False by default; enable via env after
+# verifying all subdomains also serve HTTPS.
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False').lower() in ('true', '1', 'yes') if not DEBUG else False
+SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'False').lower() in ('true', '1', 'yes') if not DEBUG else False
