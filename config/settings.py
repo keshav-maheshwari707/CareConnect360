@@ -87,11 +87,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 
 # Database
-# https://docs.djangoproject.com/en/6.1/ref/settings/#databases
+# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
+        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.mysql'),
         'NAME': os.getenv('DB_NAME'),
         'USER': os.getenv('DB_USER'),
         'PASSWORD': os.getenv('DB_PASSWORD'),
@@ -207,13 +207,6 @@ CSRF_TRUSTED_ORIGINS = [
     for origin in csrf_origins_env.split(',')
     if origin.strip()
 ]
-
-csrf_origins_env = os.getenv('CSRF_TRUSTED_ORIGINS', '')
-
-if csrf_origins_env:
-    CSRF_TRUSTED_ORIGINS = [
-        origin.strip() for origin in csrf_origins_env.split(',') if origin.strip()
-    ]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
